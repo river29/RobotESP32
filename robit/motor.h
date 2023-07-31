@@ -11,30 +11,56 @@
 class Motor
 {
 private:
+  int in1Pin;
+  int in2Pin;
+  int enablePin;
+  int channel;
+  String motorName;
+
   Encoder myEnc;
   double Setpoint, Input, Output;
   PID myPID;
-  Servo myESC;
+
   int totalTicks;
+
 public:
-  Motor(int encoderPinA, int encoderPinB, int escPin) : myEnc(encoderPinA, encoderPinB), myPID(&Input, &Output, &Setpoint, KP, KI, KD, DIRECT)
+  Motor(int in1Pin, int in2Pin, int enablePin, int channel, String motorName, int encoderPinA, int encoderPinB) 
+  : in1Pin(in1Pin), in2Pin(in2Pin), enablePin(enablePin), channel(channel), motorName(motorName), 
+    myEnc(encoderPinA, encoderPinB), myPID(&Input, &Output, &Setpoint, KP, KI, KD, DIRECT)
   {
-    myESC.attach(escPin, MIN_PULSE_WIDTH, MAX_PULSE_WIDTH);
+    pinMode(in1Pin, OUTPUT);
+    pinMode(in2Pin, OUTPUT);
+    ledcSetup(channel, 25000, 8);
+    ledcAttachPin(enablePin, channel);
+
     myPID.SetMode(AUTOMATIC);
     totalTicks = 0; // Initialize totalTicks to 0
   }
 
-  void setSpeed(int speed)
-  {
-    Setpoint = speed;
+  void setSpeed(int direction, float speedPercentage) {
+    if (direction == 0) {
+      digitalWrite(in1Pin, LOW);
+      digitalWrite(in2Pin, HIGH);
+      Serial.println(motorName + " running backward at " + String(speedPercentage) + "% speed");
+    } else {
+      digitalWrite(in1Pin, HIGH);
+      digitalWrite(in2Pin, LOW);
+      Serial.println(motorName + " running forward at " + String(speedPercentage) + "% speed");
+    }
+    int dutyCycle = speedPercentage * 255 / 100; // convert percentage to duty cycle
+    ledcWrite(channel, dutyCycle);
+
+    if(speedPercentage == 0) {
+      Serial.println(motorName + " stopped");
+    }
   }
 
   void compute()
   {
     Input = myEnc.read();
     myPID.Compute();
-    int pulseWidth = map(static_cast<int>(Output), 0, 1023, MIN_PULSE_WIDTH, MAX_PULSE_WIDTH);
-    myESC.writeMicroseconds(pulseWidth);
+    int dutyCycle = Output * 255 / 100; // convert PID output to duty cycle
+    ledcWrite(channel, dutyCycle);
   }
 
   int getTotalTicks()
@@ -43,6 +69,4 @@ public:
   }
 };
 
-
 #endif // MOTOR_H
-
