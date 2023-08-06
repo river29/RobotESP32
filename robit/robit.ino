@@ -5,23 +5,23 @@
 #include "Motor.h"
 #include <ArduinoJson.h>
 
-
-#define WIFI_SSID "ssid"
-#define WIFI_PASS "pass"
+#define WIFI_SSID "GetOffMyLawn"
+#define WIFI_PASS "gobeavs1234"
 
 Motor* motorA;
 Motor* motorB;
 
-
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
+
+
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Serial port opened");
-
-  motorA = new Motor(4, 16, 19, 0, "Motor A", 34, 39); // IN1, IN2, ENA, channel, motor name, encoderPinA, encoderPinB
-  motorB = new Motor(17, 18, 21, 1, "Motor B", 23, 22); // IN3, IN4, ENB, channel, motor name, encoderPinA, encoderPinB
+  
+  motorA = new Motor(4, 16, 19, 0, "Motor A", 23, 22);
+  motorB = new Motor(17, 18, 21, 1, "Motor B", 34, 39);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
@@ -40,24 +40,35 @@ void setup() {
   server.begin();
 }
 
+
 void loop() {
-  static unsigned long lastUpdateTime = 0; // Time of last update
+  static unsigned long lastUpdateTime = 0;
+  static unsigned long lastUpdateTime2 = 0;
   unsigned long now = millis();
 
-  // motorA->compute();
-  // motorB->compute();
+  if (now - lastUpdateTime2 >= 10) {
+    motorB->compute();
+    // motorA->compute();
 
-  if (now - lastUpdateTime >= 1000) { // Update every 1 second
+    lastUpdateTime2 = now;
+  }
+  if (now - lastUpdateTime >= 1000) {
     lastUpdateTime = now;
-    String msg = "{";
-    msg += "\"motorA\":" + String(motorA->getTotalTicks()) + ",";
-    msg += "\"motorB\":" + String(motorB->getTotalTicks());
-    msg += "}";
-    ws.textAll(msg); // Send encoder counts to all connected clients
+
+    DynamicJsonDocument doc(1024);
+    doc["motorA"] = motorA->getTotalTicks();
+    doc["motorA_rpm"] = motorA->getRPM();
+    doc["motorB"] = motorB->getTotalTicks();
+    doc["motorB_rpm"] = motorB->getRPM();
+    
+    String msg;
+    serializeJson(doc, msg);
+    ws.textAll(msg);
   }
 
   ws.cleanupClients();
 }
+
 
 void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type, void *arg, uint8_t *data, size_t len) {
   if(type == WS_EVT_CONNECT) {
@@ -77,9 +88,9 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       int dir = doc["dir"];
 
       // Set motor speeds
-      Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " - direction: " + String(dir));
+      // Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " - direction: " + String(dir));
 
-      motorA->setSpeed(dir, motorASpeed);
+      // motorA->setSpeed(dir, motorASpeed);
       motorB->setSpeed(!dir, motorBSpeed);
     }
 
@@ -90,8 +101,8 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       double kd = doc["kd"];
 
       // Set PID values for both motors
-      // motorA.setPidValues(kp, ki, kd);
-      // motorB.setPidValues(kp, ki, kd);
+      motorA->setPidValues(kp, ki, kd);
+      motorB->setPidValues(kp, ki, kd);
     }
   }
 }
@@ -102,10 +113,10 @@ return R"rawliteral(
 <!DOCTYPE HTML>
 <html>
   <body>
-    <div id="controlPad" style="width: 80vw; height: 80vw; position: relative; border: 1px solid black;">
+    <div id="controlPad" style="width: 30vw; height: 30vw; position: relative; border: 1px solid black;">
       <div id="verticalLine" style="width: 1px; height: 100%; position: absolute; top: 0; left: 50%; background: black;"></div>
       <div id="horizontalLine" style="width: 100%; height: 1px; position: absolute; top: 50%; left: 0; background: black;"></div>
-      <div id="cursor" style="width: 10px; height: 10px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: red;"></div>
+      <div id="cursor" style="width: 20px; height: 20px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: red;"></div>
     </div>
     <br>
     <div id="motorInfo">
@@ -130,11 +141,12 @@ return R"rawliteral(
       var leftEncoder = document.getElementById("leftEncoder");
       var rightEncoder = document.getElementById("rightEncoder");
 
+
       connection.onmessage = function(e) {
         var data = JSON.parse(e.data);
-        if (data.hasOwnProperty('motor1') && data.hasOwnProperty('motor2')) {
-          leftEncoder.innerText = data.motor1 + " ticks";
-          rightEncoder.innerText = data.motor2 + " ticks";
+        if (data.hasOwnProperty('motorA') && data.hasOwnProperty('motorB')) {
+          leftEncoder.innerText = data.motorA + " ticks, " + data.motorA_rpm + " rpm";
+          rightEncoder.innerText = data.motorB + " ticks, " + data.motorB_rpm + " rpm";
         }
       };
 
@@ -184,13 +196,6 @@ return R"rawliteral(
         handleMouseOut();
       });
 
-      controlPad.addEventListener("touchmove", function(event) {
-        event.preventDefault();
-        var touch = event.touches[0];
-        handleMovement(touch.clientX, touch.clientY);
-      }, {passive: false});
-
-      controlPad.addEventListener("touchend", handleMouseOut);
 
       function updatePID() {
         var kp = document.getElementById("kp").value;
