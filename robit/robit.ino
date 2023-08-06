@@ -5,8 +5,8 @@
 #include "Motor.h"
 #include <ArduinoJson.h>
 
-#define WIFI_SSID "GetOffMyLawn"
-#define WIFI_PASS "gobeavs1234"
+#define WIFI_SSID "ssid"
+#define WIFI_PASS "pass"
 
 Motor* motorA;
 Motor* motorB;
