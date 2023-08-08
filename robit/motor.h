@@ -4,9 +4,9 @@
 #include <PID_v1.h>
 #include <Encoder.h>
 
-#define KP 2.0
-#define KI 5.0
-#define KD 1.0
+#define KP 0.3
+#define KI 40
+#define KD 0
 
 class Motor
 {
@@ -21,10 +21,10 @@ private:
   double Setpoint, Input, Output;
   PID myPID;
 
-  long previousTicks;
-  unsigned long previousTime;
-  float maxRpm = 10;
-  float currentRpm;
+  long previousTicks = 0;
+  unsigned long previousTime = 0;
+  float maxRpm = 40;
+  float currentRpm = 0;
   int totalTicksPerRevolution = 640;
 
 public:
@@ -39,6 +39,7 @@ public:
     ledcAttachPin(enablePin, channel);
 
     myPID.SetMode(AUTOMATIC);
+    myPID.SetOutputLimits(-255,255);
     previousTicks = 0;
     previousTime = 0;
   }
@@ -49,6 +50,14 @@ public:
 
   void setSpeed(int direction, float speedPercentage) {
     if (direction == 0) {
+      Setpoint = speedPercentage *-1;
+    } else {
+      Setpoint = speedPercentage;
+    }
+  }
+
+  void setSpeed2(float speedPercentage) {
+    if (speedPercentage >= 0) {
       digitalWrite(in1Pin, LOW);
       digitalWrite(in2Pin, HIGH);
       // Serial.println(motorName + " running backward at " + String(speedPercentage) + "% speed");
@@ -58,40 +67,26 @@ public:
       // Serial.println(motorName + " running forward at " + String(speedPercentage) + "% speed");
     }
     // int dutyCycle = speedPercentage * 255 / 100; // convert percentage to duty cycle
-    // ledcWrite(channel, dutyCycle);
-    Setpoint = speedPercentage;
-
-    if(speedPercentage == 0) {
-      // Serial.println(motorName + " stopped");
-    }
+    ledcWrite(channel, abs(speedPercentage));
   }
 
 
 
 void compute()
 {
-  long currentTicks = myEnc.read();
-  unsigned long currentTime = millis();
-  long deltaTicks = currentTicks - previousTicks;
-  unsigned long deltaTime = currentTime - previousTime;
-
-  // Calculate RPM
-  currentRpm = 0;
-  if (deltaTime > 0) {
-    currentRpm = (float)deltaTicks / deltaTime * 60000.0 / totalTicksPerRevolution;
-  }
 
   // Calculate percentage of maximum RPM
-  Input = currentRpm / maxRpm;// * 100.0;
+  Input = currentRpm/4.0;
   // Input = myEnc.read();
   // Update PID controller
   myPID.Compute();
-  int dutyCycle = constrain(Output, 0, 255); // Constrain PID output
-  ledcWrite(channel, dutyCycle);
+  int dutyCycle = constrain(Output, -255, 255); // Constrain PID output
+
+
+  setSpeed2(dutyCycle);
 
   // Update previous values for next iteration
-  previousTicks = currentTicks;
-  previousTime = currentTime;
+
 
   // Log current RPM, setpoint, and duty cycle in CSV format
   Serial.println(String(Input) + "," + String(Output) + "," + String(Setpoint));// + "," + String(dutyCycle));
@@ -106,9 +101,27 @@ void compute()
   {
     return currentRpm;
   }
+
+  void updateRPM(){
+    long currentTicks = myEnc.read();
+    unsigned long currentTime = millis();
+    long deltaTicks = currentTicks - previousTicks;
+    unsigned long deltaTime = currentTime - previousTime;
+
+    // Calculate RPM
+    if (deltaTime > 0) {
+      currentRpm = (float)deltaTicks / deltaTime * 60000.0 / totalTicksPerRevolution;
+    }
+
+    previousTicks = currentTicks;
+    previousTime = currentTime;
+  }
   void setPidValues(double kp, double ki, double kd) {
     myPID.SetTunings(kp, ki, kd);
   }
+
+
+
 
 };
 
