@@ -66,6 +66,7 @@ void loop() {
     doc["motorA_rpm"] = motorA->getRPM();
     doc["motorB"] = motorB->getTotalTicks();
     doc["motorB_rpm"] = motorB->getRPM();
+    doc["motorA_speed"] = motorA->getMaxSpeed();
     
     String msg;
     serializeJson(doc, msg);
@@ -85,20 +86,52 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
     DynamicJsonDocument doc(1024);
     deserializeJson(doc, (char*)data);
 
-    if (doc.containsKey("motorA") && doc.containsKey("motorB") && doc.containsKey("dir")) {
-      // Extract speed values
-      int motorASpeed = doc["motorA"];
-      int motorBSpeed = doc["motorB"];
+    if (doc.containsKey("changeMaxSpeed")) {
+      int direction = doc["changeMaxSpeed"];
+      int newSpeed = motorA->getMaxSpeed() + direction;
+      newSpeed = constrain(newSpeed, 1, 14); // Ensure the speed is within the range [1, 10]
+      
+      motorA->setMaxSpeed(newSpeed);
+      motorB->setMaxSpeed(newSpeed);
 
-      int dir = doc["dir"];
+
+      
+      // Optionally, send a confirmation message back to the client
+      // connection.send(JSON.stringify({ maxSpeed: newSpeed }));
+    }
+
+    // if (doc.containsKey("motorA") && doc.containsKey("motorB") && doc.containsKey("dir")) {
+    //   // Extract speed values
+    //   int motorASpeed = doc["motorA"];
+    //   int motorBSpeed = doc["motorB"];
+
+    //   int dir = doc["dir"];
+
+    //   // Set motor speeds
+    //   Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " Motor B Speed: " + String(motorBSpeed) + "% speed");
+      
+    //   motorA->setSpeed(motorASpeed < 0, abs(motorASpeed));
+    //   // Serial.println(String(motorBSpeed));
+    //   motorB->setSpeed(motorBSpeed > 0, abs(motorBSpeed));
+    // }
+
+    if (doc.containsKey("axis2") && doc.containsKey("axis5")) {
+      // Extract speed values
+      double axis2 = doc["axis2"];
+      double axis5 = doc["axis5"];
+      axis2 = axis2/(10-7*(abs(axis5)/1.0));
+      double motorBSpeed = min(100.0, max(-100.0, (axis2 - axis5) * 100.0));
+      double motorASpeed = min(100.0, max(-100.0, (-axis5 - axis2) * 100.0));
 
       // Set motor speeds
-      // Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " - direction: " + String(dir));
+      Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " Motor B Speed: " + String(motorBSpeed) + "% speed");
       
       motorA->setSpeed(motorASpeed < 0, abs(motorASpeed));
       // Serial.println(String(motorBSpeed));
       motorB->setSpeed(motorBSpeed > 0, abs(motorBSpeed));
     }
+
+
 
     if (doc.containsKey("kp") && doc.containsKey("ki") && doc.containsKey("kd")) {
       // Extract PID values
@@ -127,8 +160,8 @@ return R"rawliteral(
     </div>
     <br>
     <div id="motorInfo">
-      <div id="leftMotor">Left Motor: <span id="leftDirection">&#8593;</span> <span id="leftSpeed">0</span>% <span id="leftEncoder">0</span> ticks</div>
-      <div id="rightMotor">Right Motor: <span id="rightDirection">&#8593;</span> <span id="rightSpeed">0</span>% <span id="rightEncoder">0</span> ticks</div>
+      <div id="leftMotor">Left Motor: <span id="leftDirection">&#8593;</span> <span id="leftSpeed">0</span>% <span id="leftEncoder">0</span></div>
+      <div id="rightMotor">Right Motor: <span id="rightDirection">&#8593;</span> <span id="rightSpeed">0</span>% <span id="rightEncoder">0</span></div>
     </div>
     <p>Adjust PID Settings:</p>
     <label>KP: <input type="text" id="kp" value="2.0"></label>
@@ -146,24 +179,33 @@ return R"rawliteral(
         setInterval(updateStatus, 100);
       });
 
-      function updateStatus(){
-        var gp = navigator.getGamepads()[0];
-        if(gp){
-            var controllerInfo = document.getElementById("controllerInfo");
+function updateStatus(){
+  var gp = navigator.getGamepads()[0];
+  if(gp){
+    var controllerInfo = document.getElementById("controllerInfo");
 
-            var axis2 = gp.axes[2];
-            var axis5 = gp.axes[5];
-            axis2 = axis2 / 6;
-            var motorBSpeed = Math.min(100, Math.max(-100, (axis2-axis5)*100));
-            var motorASpeed = Math.min(100, Math.max(-100, (-axis5-axis2)*100));
-            var dir = axis2 < 0 ? 0 : 1;
+    var axis2 = gp.axes[0];
+    var axis5 = gp.axes[5];
 
-            controllerInfo.innerHTML = "AXIS 2: " + axis2 + ", AXIS 5: " + axis5 + "<br />";
-            controllerInfo.innerHTML += "motorASpeed: " + motorASpeed + ", motorBSpeed: " + motorBSpeed + ", dir: " + dir;
+    // Handle B6 and B7 buttons
+    var b6 = gp.buttons[6].pressed;
+    var b7 = gp.buttons[7].pressed;
 
-            connection.send(JSON.stringify({ motorA: motorASpeed, motorB: motorBSpeed, dir: dir }));
-        }
-      }
+    if(b6) {
+      connection.send(JSON.stringify({ changeMaxSpeed: -1 }));
+    }
+
+    if(b7) {
+      connection.send(JSON.stringify({ changeMaxSpeed: 1 }));
+    }
+
+    controllerInfo.innerHTML = "AXIS 2: " + axis2 + ", AXIS 5: " + axis5 + "<br />";
+    // controllerInfo.innerHTML += "motorASpeed: " + motorASpeed + ", motorBSpeed: " + motorBSpeed + ", dir: " + dir + ", Max Speed: " + motorA.getMaxSpeed();
+
+    connection.send(JSON.stringify({ axis2: axis2, axis5: axis5}));
+  }
+}
+
 
       var controlPad = document.getElementById("controlPad");
       var cursor = document.getElementById("cursor");
@@ -181,64 +223,12 @@ return R"rawliteral(
       connection.onmessage = function(e) {
         var data = JSON.parse(e.data);
         if (data.hasOwnProperty('motorA') && data.hasOwnProperty('motorB')) {
-          leftEncoder.innerText = data.motorA + " ticks, " + data.motorA_rpm + " rpm";
+          leftEncoder.innerText = data.motorA + " ticks, " + data.motorA_rpm + " rpm" + " speed: " + data.motorA_speed;
           rightEncoder.innerText = data.motorB + " ticks, " + data.motorB_rpm + " rpm";
         }
       };
 
-      // function handleMovement(clientX, clientY) {
-      //   var rect = controlPad.getBoundingClientRect();
-      //   var x = clientX - rect.left;
-      //   var y = clientY - rect.top;
-      //   cursor.style.left = x + "px";
-      //   cursor.style.top = y + "px";
 
-      //   var xPercent = x / rect.width;
-      //   var yPercent = y / rect.height;
-
-      //   var speedPercent = 2 * Math.abs(0.5 - yPercent);
-      //   var dir = yPercent < 0.5 ? "&#8593;" : "&#8595;"; // Up arrow and Down arrow in HTML
-
-      //   var rightTurnMultiplier = xPercent < 0.5 ? 1 : 1 - 1 * (xPercent - 0.5);
-      //   var leftTurnMultiplier = xPercent > 0.5 ? 1 : 1 - 1 * (0.5 - xPercent);
-
-      //   var motorASpeed = Math.round(speedPercent * 100 * rightTurnMultiplier);
-      //   var motorBSpeed = Math.round(speedPercent * 100 * leftTurnMultiplier);
-
-      //   leftMotor.innerHTML = motorBSpeed;
-      //   rightMotor.innerHTML = motorASpeed;
-      //   leftDirection.innerHTML = rightDirection.innerHTML = dir;
-
-      //   // Send motor commands over WebSocket connection
-      //   connection.send(JSON.stringify({ motorA: motorASpeed, motorB: motorBSpeed, dir: yPercent < 0.5 }));
-      // }
-
-      // function handleMouseOut() {
-      //   cursor.style.left = "50%";
-      //   cursor.style.top = "50%";
-
-      //   leftMotor.innerHTML = rightMotor.innerHTML = "0";
-      //   leftDirection.innerHTML = rightDirection.innerHTML = "&#8593;";
-
-      //   // Send stop command over WebSocket connection
-      //   connection.send(JSON.stringify({ motorA: 0, motorB: 0, dir: true }));
-      // }
-
-      // controlPad.addEventListener("mousemove", function(event) {
-      //   handleMovement(event.clientX, event.clientY);
-      // });
-
-      // controlPad.addEventListener("mouseout", function(event) {
-      //   handleMouseOut();
-      // });
-
-      // controlPad.addEventListener("touchmove", function(event) {
-      //   event.preventDefault();
-      //   var touch = event.touches[0];
-      //   handleMovement(touch.clientX, touch.clientY);
-      // }, {passive: false});
-
-      // controlPad.addEventListener("touchend", handleMouseOut);
 
       function updatePID() {
         var kp = document.getElementById("kp").value;
