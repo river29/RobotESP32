@@ -4,8 +4,8 @@
 #include <PID_v1.h>
 #include <Encoder.h>
 
-#define KP 0.3
-#define KI 40
+#define KP 0.2
+#define KI 33
 #define KD 0
 
 class Motor
@@ -26,6 +26,7 @@ private:
   float maxRpm = 40;
   float currentRpm = 0;
   int totalTicksPerRevolution = 640;
+  int maxSpeed = 5;
 
 public:
   Motor(int in1Pin, int in2Pin, int enablePin, int channel, String motorName, int encoderPinA, int encoderPinB) 
@@ -76,7 +77,7 @@ void compute()
 {
 
   // Calculate percentage of maximum RPM
-  Input = currentRpm/4.0;
+  Input = currentRpm/maxSpeed;
   // Input = myEnc.read();
   // Update PID controller
   myPID.Compute();
@@ -89,7 +90,7 @@ void compute()
 
 
   // Log current RPM, setpoint, and duty cycle in CSV format
-  Serial.println(String(Input) + "," + String(Output) + "," + String(Setpoint));// + "," + String(dutyCycle));
+  // Serial.println(String(Input) + "," + String(Output) + "," + String(Setpoint));// + "," + String(dutyCycle));
 }
 
   int getTotalTicks()
@@ -118,6 +119,13 @@ void compute()
   }
   void setPidValues(double kp, double ki, double kd) {
     myPID.SetTunings(kp, ki, kd);
+  }
+
+  int getMaxSpeed(){
+    return maxSpeed;
+  }
+  void setMaxSpeed(int newSpeed) {
+    maxSpeed = newSpeed;
   }
 
 
