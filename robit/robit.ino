@@ -6,13 +6,11 @@
 #include <ArduinoJson.h>
 #include <ESPmDNS.h>
 
-
 #define WIFI_SSID "ssid"
 #define WIFI_PASS "pass"
 
 Motor* motorA;
 Motor* motorB;
-
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -93,27 +91,7 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       
       motorA->setMaxSpeed(newSpeed);
       motorB->setMaxSpeed(newSpeed);
-
-
-      
-      // Optionally, send a confirmation message back to the client
-      // connection.send(JSON.stringify({ maxSpeed: newSpeed }));
     }
-
-    // if (doc.containsKey("motorA") && doc.containsKey("motorB") && doc.containsKey("dir")) {
-    //   // Extract speed values
-    //   int motorASpeed = doc["motorA"];
-    //   int motorBSpeed = doc["motorB"];
-
-    //   int dir = doc["dir"];
-
-    //   // Set motor speeds
-    //   Serial.println("Motor A Speed: " + String(motorASpeed) + "% speed" + " Motor B Speed: " + String(motorBSpeed) + "% speed");
-      
-    //   motorA->setSpeed(motorASpeed < 0, abs(motorASpeed));
-    //   // Serial.println(String(motorBSpeed));
-    //   motorB->setSpeed(motorBSpeed > 0, abs(motorBSpeed));
-    // }
 
     if (doc.containsKey("axis2") && doc.containsKey("axis5")) {
       // Extract speed values
@@ -130,8 +108,6 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       // Serial.println(String(motorBSpeed));
       motorB->setSpeed(motorBSpeed > 0, abs(motorBSpeed));
     }
-
-
 
     if (doc.containsKey("kp") && doc.containsKey("ki") && doc.containsKey("kd")) {
       // Extract PID values
@@ -205,20 +181,14 @@ function updateStatus(){
     connection.send(JSON.stringify({ axis2: axis2, axis5: axis5}));
   }
 }
-
-
       var controlPad = document.getElementById("controlPad");
       var cursor = document.getElementById("cursor");
       var leftMotor = document.getElementById("leftSpeed");
       var rightMotor = document.getElementById("rightSpeed");
       var leftDirection = document.getElementById("leftDirection");
       var rightDirection = document.getElementById("rightDirection");
-
       var leftEncoder = document.getElementById("leftEncoder");
       var rightEncoder = document.getElementById("rightEncoder");
-
-      
-
 
       connection.onmessage = function(e) {
         var data = JSON.parse(e.data);
@@ -227,9 +197,7 @@ function updateStatus(){
           rightEncoder.innerText = data.motorB + " ticks, " + data.motorB_rpm + " rpm";
         }
       };
-
-
-
+  
       function updatePID() {
         var kp = document.getElementById("kp").value;
         var ki = document.getElementById("ki").value;
