@@ -8,6 +8,9 @@
 #define KI 33
 #define KD 0
 
+double pidi[10] = {5, 10, 15, 20, 25, 30, 35, 40, 45, 50};
+double pidp[10] = {0.1, 0.1, 0.1, 0.1, 0.2, 0.2, 0.2, 0.2,0.2,0.2};
+
 class Motor
 {
 private:
@@ -26,7 +29,7 @@ private:
   float maxRpm = 40;
   float currentRpm = 0;
   int totalTicksPerRevolution = 640;
-  int maxSpeed = 5;
+  int maxSpeed = 7;
 
 public:
   Motor(int in1Pin, int in2Pin, int enablePin, int channel, String motorName, int encoderPinA, int encoderPinB) 
@@ -125,10 +128,19 @@ void compute()
     return maxSpeed;
   }
   void setMaxSpeed(int newSpeed) {
+    setPidValues(pidp[newSpeed-1],pidi[newSpeed-1],0);
     maxSpeed = newSpeed;
   }
 
-
+  double getKI(){
+    return myPID.GetKi();
+  }
+  double getKP(){
+    return myPID.GetKp();
+  }
+  double getKD(){
+    return myPID.GetKd();
+  }
 
 
 };
