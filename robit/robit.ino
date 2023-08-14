@@ -10,9 +10,17 @@
 #define WIFI_SSID "ssid"
 #define WIFI_PASS "pass"
 
+#define SERVO_PIN 13
+#define SERVO_CHANNEL 3 // Using channel 3 now
+#define SERVO_FREQ 50
+#define SERVO_MIN_DUTY 819 // Duty cycle for 0 degrees
+#define SERVO_MAX_DUTY 4092 // Duty cycle for 180 degrees
+
+
 Motor* motorA;
 Motor* motorB;
-
+bool waving = false;
+int pos = 0;    
 
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
@@ -21,10 +29,16 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Serial port opened");
 
-  motorA = new Motor(4, 16, 19, 0, "Motor A", 23, 22); // IN1, IN2, ENA, channel, motor name, encoderPinA, encoderPinB
-  motorB = new Motor(17, 18, 21, 1, "Motor B", 34, 39); // IN3, IN4, ENB, channel, motor name, encoderPinA, encoderPinB
+  // motorA = new Motor(4, 16, 19, 0, "Motor A", 23, 22); // IN1, IN2, ENA, channel, motor name, encoderPinA, encoderPinB
+  // motorB = new Motor(17, 18, 21, 1, "Motor B", 34, 39); // IN3, IN4, ENB, channel, motor name, encoderPinA, encoderPinB
+
+  motorA = new Motor(16, 17, 4, 0, "Motor A", 23, 22); // IN1, IN2, ENA, channel, motor name, encoderPinA, encoderPinB
+  motorB = new Motor(18, 19, 21, 1, "Motor B", 34, 39); // IN3, IN4, ENB, channel, motor name, encoderPinA, encoderPinB
   motorA->setMaxSpeed(7);
   motorA->setMaxSpeed(7);
+  
+  ledcSetup(SERVO_CHANNEL, SERVO_FREQ, 16); // 16-bit width
+  ledcAttachPin(SERVO_PIN, SERVO_CHANNEL);
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
@@ -44,6 +58,30 @@ void setup() {
   server.begin();
 }
 
+void setServoAngle(int angle) {
+  if (angle < 0) angle = 0;
+  if (angle > 180) angle = 180;
+  
+  int dutyCycle = map(angle, 0, 180, SERVO_MIN_DUTY, SERVO_MAX_DUTY);
+  ledcWrite(SERVO_CHANNEL, dutyCycle);
+
+  Serial.println("Angle " + String(angle));
+
+}
+
+void waveServo() {
+  static unsigned long lastWaveTime = 0;
+  static int position = 0;
+  static int direction = 1; // 1 for increasing, -1 for decreasing
+
+  if (millis() - lastWaveTime >= 6) {
+    position += direction * 5; // Change angle by 5 degrees
+    if (position >= 180 || position <= 0) direction = -direction; // Reverse direction at limits
+    setServoAngle(position);
+    lastWaveTime = millis();
+  }
+}
+
 void loop() {
   static unsigned long lastUpdateTime = 0;
   static unsigned long lastUpdateTime2 = 0;
@@ -53,6 +91,12 @@ void loop() {
   motorA->compute();
 
   motorB->compute();
+
+  if (waving) {
+    waveServo();
+  } else {
+    setServoAngle(100);
+  }
 
   if (now - lastUpdateTime2 >= 10) {
     motorB->updateRPM();
@@ -129,7 +173,14 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       motorA->setPidValues(kp, ki, kd);
       motorB->setPidValues(kp, ki, kd);
     }
+
+    if (doc.containsKey("waveServo")) {
+      waving = doc["waveServo"];
+    }
+
   }
+
+
 }
 
 
@@ -167,6 +218,7 @@ function updateStatus(){
   var axis2Int = 5;
   var b1Int = 6;
   var b2Int = 7;
+  var b3Int = 1;
   if(gp){
     var controllerInfo = document.getElementById("controllerInfo");
     
@@ -175,6 +227,7 @@ function updateStatus(){
       axis2Int = 3;
       b1Int = 4;
       b2Int = 5;
+      b3Int = 1;
     } 
 
     // Round axis2 and axis5 to the nearest hundreth
@@ -183,6 +236,8 @@ function updateStatus(){
     // Handle B6 and B7 buttons
     var b1 = gp.buttons[b1Int].pressed;
     var b2 = gp.buttons[b2Int].pressed;
+    var b3 = gp.buttons[b3Int].pressed;
+
 
     if(b1) {
       connection.send(JSON.stringify({ changeMaxSpeed: -1 }));
@@ -192,6 +247,9 @@ function updateStatus(){
       connection.send(JSON.stringify({ changeMaxSpeed: 1 }));
     }
 
+    
+    connection.send(JSON.stringify({ waveServo: b3 }));
+    
     controllerInfo.innerHTML = "AXIS 1: " + axis1 + ", AXIS 2: " + axis2 + "<br />";
     // controllerInfo.innerHTML += "motorASpeed: " + motorASpeed + ", motorBSpeed: " + motorBSpeed + ", dir: " + dir + ", Max Speed: " + motorA.getMaxSpeed();
 
