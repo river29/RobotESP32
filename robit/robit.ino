@@ -7,19 +7,25 @@
 #include <ESPmDNS.h>
 
 
-#define WIFI_SSID "ssid"
-#define WIFI_PASS "pass"
+#define WIFI_SSID "TuckZone"
+#define WIFI_PASS "tucktuck"
 
-#define SERVO_PIN 13
+#define SERVO_PIN 14
 #define SERVO_CHANNEL 3 // Using channel 3 now
 #define SERVO_FREQ 50
 #define SERVO_MIN_DUTY 819 // Duty cycle for 0 degrees
 #define SERVO_MAX_DUTY 4092 // Duty cycle for 180 degrees
+#define PUMP_PIN_1 13
+#define PUMP_PIN_2 12
+#define PUMP_CHANNEL 4
+#define PUMP_FREQ 5000
+#define PUMP_RES 8
 
 
 Motor* motorA;
 Motor* motorB;
 bool waving = false;
+bool pumpRunning = false;
 int pos = 0;    
 
 AsyncWebServer server(80);
@@ -37,8 +43,11 @@ void setup() {
   motorA->setMaxSpeed(7);
   motorA->setMaxSpeed(7);
   
+  pinMode(PUMP_PIN_2, OUTPUT);  // Only required for the digital pin
   ledcSetup(SERVO_CHANNEL, SERVO_FREQ, 16); // 16-bit width
   ledcAttachPin(SERVO_PIN, SERVO_CHANNEL);
+  ledcSetup(PUMP_CHANNEL, PUMP_FREQ, PUMP_RES);
+  ledcAttachPin(PUMP_PIN_1, PUMP_CHANNEL);
 
   WiFi.begin(WIFI_SSID, WIFI_PASS);
   while (WiFi.status() != WL_CONNECTED) {
@@ -58,6 +67,21 @@ void setup() {
   server.begin();
 }
 
+void setPumpMotorSpeed(int speedPercent) {
+  // Constrain and map the speed percentage to PWM value
+  speedPercent = constrain(speedPercent, 0, 100);
+  int pwmValue = map(speedPercent, 0, 100, 0, 255);
+
+  // Set motor direction (you can reverse these if your motor spins the wrong way)
+  if (speedPercent >= 0) {
+    digitalWrite(PUMP_PIN_2, LOW); // set IN2 low
+    ledcWrite(PUMP_CHANNEL, pwmValue); // set IN1 high with PWM value
+  } else {
+    digitalWrite(PUMP_PIN_2, HIGH); // set IN2 high
+    ledcWrite(PUMP_CHANNEL, 255 - pwmValue); // set IN1 low with inverse PWM value
+  }
+}
+
 void setServoAngle(int angle) {
   if (angle < 0) angle = 0;
   if (angle > 180) angle = 180;
@@ -65,9 +89,9 @@ void setServoAngle(int angle) {
   int dutyCycle = map(angle, 0, 180, SERVO_MIN_DUTY, SERVO_MAX_DUTY);
   ledcWrite(SERVO_CHANNEL, dutyCycle);
 
-  Serial.println("Angle " + String(angle));
 
 }
+
 
 void waveServo() {
   static unsigned long lastWaveTime = 0;
@@ -96,6 +120,12 @@ void loop() {
     waveServo();
   } else {
     setServoAngle(100);
+  }
+
+  if (pumpRunning) {
+    setPumpMotorSpeed(75);
+  } else {
+    setPumpMotorSpeed(0);
   }
 
   if (now - lastUpdateTime2 >= 10) {
@@ -178,6 +208,14 @@ void onWsEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventTyp
       waving = doc["waveServo"];
     }
 
+    if (doc.containsKey("runPump")) {
+
+      pumpRunning = doc["runPump"];
+      if (pumpRunning) {
+        Serial.println("pumpin");
+      }
+    }
+
   }
 
 
@@ -219,6 +257,7 @@ function updateStatus(){
   var b1Int = 6;
   var b2Int = 7;
   var b3Int = 1;
+  var b4Int = 2;
   if(gp){
     var controllerInfo = document.getElementById("controllerInfo");
     
@@ -228,6 +267,7 @@ function updateStatus(){
       b1Int = 4;
       b2Int = 5;
       b3Int = 1;
+      b4Int = 2;
     } 
 
     // Round axis2 and axis5 to the nearest hundreth
@@ -237,6 +277,7 @@ function updateStatus(){
     var b1 = gp.buttons[b1Int].pressed;
     var b2 = gp.buttons[b2Int].pressed;
     var b3 = gp.buttons[b3Int].pressed;
+    var b4 = gp.buttons[b4Int].pressed;
 
 
     if(b1) {
@@ -249,6 +290,8 @@ function updateStatus(){
 
     
     connection.send(JSON.stringify({ waveServo: b3 }));
+    connection.send(JSON.stringify({ runPump: b4 }));
+
     
     controllerInfo.innerHTML = "AXIS 1: " + axis1 + ", AXIS 2: " + axis2 + "<br />";
     // controllerInfo.innerHTML += "motorASpeed: " + motorASpeed + ", motorBSpeed: " + motorBSpeed + ", dir: " + dir + ", Max Speed: " + motorA.getMaxSpeed();
